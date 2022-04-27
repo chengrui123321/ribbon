@@ -17,8 +17,6 @@
  */
 package com.netflix.loadbalancer;
 
-import com.netflix.client.config.IClientConfig;
-
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -27,12 +25,16 @@ import java.util.concurrent.ThreadLocalRandom;
  * servers.
  * 
  * @author stonse
+ *
+ * 随机负载均衡策略
  * 
  */
 public class RandomRule extends AbstractLoadBalancerRule {
 
     /**
      * Randomly choose from all living servers
+     *
+     * 随机选择服务
      */
     @edu.umd.cs.findbugs.annotations.SuppressWarnings(value = "RCN_REDUNDANT_NULLCHECK_OF_NULL_VALUE")
     public Server choose(ILoadBalancer lb, Object key) {

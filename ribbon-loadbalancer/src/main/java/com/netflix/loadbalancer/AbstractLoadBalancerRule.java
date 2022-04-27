@@ -23,6 +23,8 @@ import com.netflix.client.IClientConfigAware;
  * Class that provides a default implementation for setting and getting load balancer
  * @author stonse
  *
+ * 提供默认实现来设置/获取 LoadBalancer
+ *
  */
 public abstract class AbstractLoadBalancerRule implements IRule, IClientConfigAware {
 

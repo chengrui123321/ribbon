@@ -36,17 +36,28 @@ import com.google.common.collect.Lists;
  * 
  * @author awang
  *
+ * 用于复合断言过滤服务列表
+ * 最终通过 {@link #getEligibleServers(List, Object)} 获取一个服务
+ *
  */
 public class CompositePredicate extends AbstractServerPredicate {
 
+    /**
+     * AbstractServerPredicate
+     */
     private AbstractServerPredicate delegate;
     
     private List<AbstractServerPredicate> fallbacks = Lists.newArrayList();
         
     private int minimalFilteredServers = 1;
     
-    private float minimalFilteredPercentage = 0;    
-    
+    private float minimalFilteredPercentage = 0;
+
+    /**
+     * 匹配断言条件
+     * @param input 需要验证的服务
+     * @return
+     */
     @Override
     public boolean apply(@Nullable PredicateKey input) {
         return delegate.apply(input);
@@ -98,10 +109,13 @@ public class CompositePredicate extends AbstractServerPredicate {
 
     /**
      * Get the filtered servers from primary predicate, and if the number of the filtered servers
-     * are not enough, trying the fallback predicates  
+     * are not enough, trying the fallback predicates
+     *
+     * 从过滤后的服务列表中获取一个服务
      */
     @Override
     public List<Server> getEligibleServers(List<Server> servers, Object loadBalancerKey) {
+        // 调用 AbstractServerPredicate#getEligibleServers
         List<Server> result = super.getEligibleServers(servers, loadBalancerKey);
         Iterator<AbstractServerPredicate> i = fallbacks.iterator();
         while (!(result.size() >= minimalFilteredServers && result.size() > (int) (servers.size() * minimalFilteredPercentage))

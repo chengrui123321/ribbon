@@ -24,9 +24,14 @@ package com.netflix.loadbalancer;
  * @author stonse
  *
  * @param <T>
+ *
+ * 在负载均衡器中过滤出服务列表抽象基类
  */
 public abstract class AbstractServerListFilter<T extends Server> implements ServerListFilter<T> {
 
+    /**
+     * 负载均衡状态
+     */
     private volatile LoadBalancerStats stats;
     
     public void setLoadBalancerStats(LoadBalancerStats stats) {

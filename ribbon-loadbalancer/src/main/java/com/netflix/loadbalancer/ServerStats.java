@@ -38,50 +38,129 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Capture various stats per Server(node) in the LoadBalancer
  * @author stonse
- *
+ * 在负载均衡器中获取每个服务的统计信息
  */
 public class ServerStats {
 
+    /**
+     * 默认拉取信息间隔时间，默认 1 分钟
+     */
     private static final int DEFAULT_PUBLISH_INTERVAL =  60 * 1000; // = 1 minute
+    /**
+     * 默认缓存数量，即 1 分钟 1000 次请求
+     */
     private static final int DEFAULT_BUFFER_SIZE = 60 * 1000; // = 1000 requests/sec for 1 minute
 
+    /**
+     * 连接失败阈值
+     */
     private final UnboxedIntProperty connectionFailureThreshold;
+    /**
+     * 超时熔断因子
+     */
     private final UnboxedIntProperty circuitTrippedTimeoutFactor;
+    /**
+     * 最大超时时间阈值
+     */
     private final UnboxedIntProperty maxCircuitTrippedTimeout;
+    /**
+     * 活跃连接统计时间窗口
+     */
     private final UnboxedIntProperty activeRequestsCountTimeout;
 
+    /**
+     * 百分比
+     */
     private static final double[] PERCENTS = makePercentValues();
-    
+
+    /**
+     * 计数器，时间窗口内
+     */
     private DataDistribution dataDist = new DataDistribution(1, PERCENTS); // in case
+    /**
+     * 数据发布器，默认 1 分钟发布一次
+     */
     private DataPublisher publisher = null;
+    /**
+     * 用于统计最大、最小、平均数等信息，一直累加
+     */
     private final Distribution responseTimeDist = new Distribution();
-    
+
+    /**
+     * 缓冲池储量
+     */
     int bufferSize = DEFAULT_BUFFER_SIZE;
+    /**
+     * 发布间隔时间
+     */
     int publishInterval = DEFAULT_PUBLISH_INTERVAL;
-    
-    
-    long failureCountSlidingWindowInterval = 1000; 
-    
+
+    /**
+     * 失败次数统计时间窗口，默认 1000 ms
+     */
+    long failureCountSlidingWindowInterval = 1000;
+
+    /**
+     * 上一秒失败次数，时间间隔基于 failureCountSlidingWindowInterval
+     */
     private MeasuredRate serverFailureCounts = new MeasuredRate(failureCountSlidingWindowInterval);
+    /**
+     * 一个窗口请求次数，时间间隔为 300 s
+     */
     private MeasuredRate requestCountInWindow = new MeasuredRate(300000L);
-    
+
+    /**
+     * 服务
+     */
     Server server;
-    
+    /**
+     * 总请求数量
+     */
     AtomicLong totalRequests = new AtomicLong();
-    
+
+    /**
+     * 连续（successive）请求异常数量（这个连续发生在 Retry 重试期间）
+     *
+     * 在重试期间，但凡有一次成功了，就会把此参数置为 0（失败的话此参数就一直加）
+     * 说明：只有在异常类型是 callErrorHandler.isCircuitTrippingException(e) 的时候，才会算作失败，才会 + 1
+     * 默认情况下只有 SocketException/SocketTimeoutException 这两种异常才算失败哦
+     */
     @VisibleForTesting
     AtomicInteger successiveConnectionFailureCount = new AtomicInteger(0);
-    
+
+    /**
+     * 活跃请求数量（正在请求的数量，它能反应该 Server 的负载、压力）
+     * 但凡只要开始执行 Sever 了，就 + 1
+     * 但凡只要请求完成了/出错了，就 - 1
+     */
     @VisibleForTesting
     AtomicInteger activeRequestsCount = new AtomicInteger(0);
 
+    /**
+     * 打开连接数量
+     */
     @VisibleForTesting
     AtomicInteger openConnectionsCount = new AtomicInteger(0);
-    
+
+    /**
+     * 最后一次失败的时间戳
+     */
     private volatile long lastConnectionFailedTimestamp;
+    /**
+     * activeRequestsCount 的值最后变化的时间戳
+     */
     private volatile long lastActiveRequestsCountChangeTimestamp;
+    /**
+     * 断路器熔断总时长（连续失败 >= 3次，增加 20~30 秒。具体增加多少秒，参考计算逻辑）
+     */
     private AtomicLong totalCircuitBreakerBlackOutPeriod = new AtomicLong(0);
+    /**
+     * 最后访问时间戳
+     */
     private volatile long lastAccessedTimestamp;
+    /**
+     * 首次连接时间戳，只会记录首次请求进来时的时间
+     */
     private volatile long firstConnectionTimestamp = 0;
 
     public ServerStats() {
@@ -91,15 +170,25 @@ public class ServerStats {
         activeRequestsCountTimeout = new UnboxedIntProperty(LoadBalancerStats.ACTIVE_REQUESTS_COUNT_TIMEOUT.defaultValue());
     }
 
+    /**
+     * 创建 ServerStats
+     * @param lbStats LoadBalancerStats
+     */
     public ServerStats(LoadBalancerStats lbStats) {
+        // 设置最大熔断超时时间
         maxCircuitTrippedTimeout = lbStats.getCircuitTripMaxTimeoutSeconds();
+        // 设置超时因子
         circuitTrippedTimeoutFactor = lbStats.getCircuitTrippedTimeoutFactor();
+        // 设置连接失败熔断阈值
         connectionFailureThreshold = lbStats.getConnectionFailureCountThreshold();
+        // 设置活跃连接数时间窗口
         activeRequestsCountTimeout = lbStats.getActiveRequestsCountTimeout();
     }
     
     /**
      * Initializes the object, starting data collection and reporting.
+     *
+     * 初始化，开始数据收集和报告
      */
     public void initialize(Server server) {
         serverFailureCounts = new MeasuredRate(failureCountSlidingWindowInterval);
@@ -107,6 +196,7 @@ public class ServerStats {
         if (publisher == null) {
             dataDist = new DataDistribution(getBufferSize(), PERCENTS);
             publisher = new DataPublisher(dataDist, getPublishIntervalMillis());
+            // 开始收集
             publisher.start();
         }
         this.server = server;
@@ -141,6 +231,8 @@ public class ServerStats {
      * The supported percentile values.
      * These correspond to the various Monitor methods defined below.
      * No, this is not pretty, but that's the way it is.
+     *
+     * 针对各种统计指标设置的百分比枚举值 【10， 25， 50， 75， 90， 95， 98， 99， 99.5】
      */
     private static enum Percent {
 
@@ -159,6 +251,10 @@ public class ServerStats {
 
     }
 
+    /**
+     * 返回百分比枚举数组
+     * @return
+     */
     private static double[] makePercentValues() {
         Percent[] percents = Percent.values();
         double[] p = new double[percents.length];
@@ -199,9 +295,13 @@ public class ServerStats {
     /**
      * Call this method to note the response time after every request
      * @param msecs
+     *
+     * 请求响应时间
      */
     public void noteResponseTime(double msecs){
+        // 累加 dataDist
         dataDist.noteValue(msecs);
+        // 累加 responseTimeDist
         responseTimeDist.noteValue(msecs);
     }
     

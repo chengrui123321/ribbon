@@ -21,13 +21,17 @@ package com.netflix.loadbalancer;
  * Interface that defines how we "ping" a server to check if its alive
  * @author stonse
  *
+ * 定义如何 ping 服务判断服务是否存活
+ *
  */
 public interface IPing {
     
     /**
      * Checks whether the given <code>Server</code> is "alive" i.e. should be
      * considered a candidate while loadbalancing
-     * 
+     *
+     *
+     * 服务是否存活
      */
     public boolean isAlive(Server server);
 }

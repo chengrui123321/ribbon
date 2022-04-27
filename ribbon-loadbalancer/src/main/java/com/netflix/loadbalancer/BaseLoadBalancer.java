@@ -54,6 +54,10 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * and an "up" server list and use them depending on what the caller asks for.
  * 
  * @author stonse
+ *
+ * 负载均衡器基础实现类，包含：
+ * 保存服务池，包含全部服务及存活服务
+ * 通过 ping 节点确认服务是否存活
  * 
  */
 public class BaseLoadBalancer extends AbstractLoadBalancer implements
@@ -61,20 +65,50 @@ public class BaseLoadBalancer extends AbstractLoadBalancer implements
 
     private static Logger logger = LoggerFactory.getLogger(BaseLoadBalancer.class);
 
+    /**
+     * 默认负载均衡策略，轮询
+     */
     private final static IRule DEFAULT_RULE = new RoundRobinRule();
+    /**
+     * 默认 ping 策略， {@link SerialPingStrategy}
+     */
     private final static SerialPingStrategy DEFAULT_PING_STRATEGY = new SerialPingStrategy();
+
+    /**
+     * 默认名称
+     */
     private static final String DEFAULT_NAME = "default";
+
+    /**
+     * 默认前缀
+     */
     private static final String PREFIX = "LoadBalancer_";
 
+    /**
+     * 负载均衡策略
+     */
     protected IRule rule = DEFAULT_RULE;
 
+    /**
+     * ping 策略
+     */
     protected IPingStrategy pingStrategy = DEFAULT_PING_STRATEGY;
 
+    /**
+     * ping
+     */
     protected IPing ping = null;
 
+    /**
+     * 所有服务列表
+     */
     @Monitor(name = PREFIX + "AllServerList", type = DataSourceType.INFORMATIONAL)
     protected volatile List<Server> allServerList = Collections
             .synchronizedList(new ArrayList<Server>());
+
+    /**
+     * 存活服务列表
+     */
     @Monitor(name = PREFIX + "UpServerList", type = DataSourceType.INFORMATIONAL)
     protected volatile List<Server> upServerList = Collections
             .synchronizedList(new ArrayList<Server>());
@@ -91,12 +125,21 @@ public class BaseLoadBalancer extends AbstractLoadBalancer implements
 
     protected AtomicBoolean pingInProgress = new AtomicBoolean(false);
 
+    /**
+     * 负载均衡状态
+     */
     protected LoadBalancerStats lbStats;
 
+    /**
+     * 计数器
+     */
     private volatile Counter counter = Monitors.newCounter("LoadBalancer_ChooseServer");
 
     private PrimeConnections primeConnections;
 
+    /**
+     * 是否开启连接， 默认 false
+     */
     private volatile boolean enablePrimingConnections = false;
     
     private IClientConfig config;
@@ -252,8 +295,12 @@ public class BaseLoadBalancer extends AbstractLoadBalancer implements
     public IClientConfig getClientConfig() {
     	return config;
     }
-    
+
+    /**
+     * 是否需要跳过 ping 功能
+     */
     private boolean canSkipPing() {
+        // 如果没有设置 ping 实例 || 实例为 DummyPing，则跳过
         if (ping == null
                 || ping.getClass().getName().equals(DummyPing.class.getName())) {
             // default ping, no need to set up timer
@@ -645,17 +692,24 @@ public class BaseLoadBalancer extends AbstractLoadBalancer implements
      * Class that contains the mechanism to "ping" all the instances
      * 
      * @author stonse
-     *
+     * 用于 ping 所有实例的类
      */
     class Pinger {
 
+        /**
+         * ping 策略
+         */
         private final IPingStrategy pingerStrategy;
 
         public Pinger(IPingStrategy pingerStrategy) {
             this.pingerStrategy = pingerStrategy;
         }
 
+        /**
+         * ping 所有服务
+         */
         public void runPinger() throws Exception {
+            // cas 并发控制
             if (!pingInProgress.compareAndSet(false, true)) { 
                 return; // Ping in progress - nothing to do
             }
@@ -672,13 +726,16 @@ public class BaseLoadBalancer extends AbstractLoadBalancer implements
                 /*
                  * The readLock should be free unless an addServer operation is
                  * going on...
+                 * 加锁
                  */
                 allLock = allServerLock.readLock();
                 allLock.lock();
+                // 获取所有服务
                 allServers = allServerList.toArray(new Server[allServerList.size()]);
                 allLock.unlock();
 
                 int numCandidates = allServers.length;
+                // ping 所有服务列表
                 results = pingerStrategy.pingServers(ping, allServers);
 
                 final List<Server> newUpList = new ArrayList<Server>();
@@ -725,24 +782,35 @@ public class BaseLoadBalancer extends AbstractLoadBalancer implements
         }
     }
 
+    /**
+     * 创建计数器
+     * @return
+     */
     private final Counter createCounter() {
         return Monitors.newCounter("LoadBalancer_ChooseServer");
     }
 
-    /*
+    /**
      * Get the alive server dedicated to key
      * 
      * @return the dedicated server
+     *
+     * 选择服务
      */
+    @Override
     public Server chooseServer(Object key) {
+        // 如果计数器为空，初始化计数器
         if (counter == null) {
             counter = createCounter();
         }
+        // 计数器 + 1
         counter.increment();
+        // 如果负载均衡策略为空，直接返回 null
         if (rule == null) {
             return null;
         } else {
             try {
+                // 基于负载均衡策略选择服务，默认 RoundRobinRule
                 return rule.choose(key);
             } catch (Exception e) {
                 logger.warn("LoadBalancer [{}]:  Error choosing server for key {}", name, key, e);
@@ -810,17 +878,21 @@ public class BaseLoadBalancer extends AbstractLoadBalancer implements
         }
     }
 
-    /*
+    /**
      * Force an immediate ping, if we're not currently pinging and don't have a
      * quick-ping already scheduled.
+     *
+     * 强制 ping
      */
     public void forceQuickPing() {
+        // 如果跳过 ping ,直接结束
         if (canSkipPing()) {
             return;
         }
         logger.debug("LoadBalancer [{}]:  forceQuickPing invoking", name);
         
         try {
+            // 创建 Pinger，执行 ping
         	new Pinger(pingStrategy).runPinger();
         } catch (Exception e) {
             logger.error("LoadBalancer [{}]: Error running forceQuickPing()", name, e);
@@ -883,16 +955,26 @@ public class BaseLoadBalancer extends AbstractLoadBalancer implements
      * Default implementation for <c>IPingStrategy</c>, performs ping
      * serially, which may not be desirable, if your <c>IPing</c>
      * implementation is slow, or you have large number of servers.
+     *
+     * {@link IPingStrategy} 默认实现，基于串行化 ping 服务列表
      */
     private static class SerialPingStrategy implements IPingStrategy {
 
+        /**
+         * ping 服务
+         * @param ping
+         * @param servers
+         * @return
+         */
         @Override
         public boolean[] pingServers(IPing ping, Server[] servers) {
+            // 服务数量
             int numCandidates = servers.length;
+            // 创建数组
             boolean[] results = new boolean[numCandidates];
 
             logger.debug("LoadBalancer:  PingTask executing [{}] servers configured", numCandidates);
-
+            // 循环遍历 ping 服务
             for (int i = 0; i < numCandidates; i++) {
                 results[i] = false; /* Default answer is DEAD. */
                 try {
@@ -909,6 +991,7 @@ public class BaseLoadBalancer extends AbstractLoadBalancer implements
                     // this
                     // serially
                     if (ping != null) {
+                        // 判断服务是否存活，基于 IPing
                         results[i] = ping.isAlive(servers[i]);
                     }
                 } catch (Exception e) {

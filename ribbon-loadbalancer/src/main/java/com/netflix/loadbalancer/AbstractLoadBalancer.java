@@ -29,20 +29,35 @@ import java.util.List;
  * Class that defines and implements a mechanism to determine the
  * suitability/availability of the nodes/servers in the List.
  * 
- * 
  * @author stonse
+ *
+ * 负载均衡器抽象基类，提供基本方法
  * 
  */
 public abstract class AbstractLoadBalancer implements ILoadBalancer {
-    
+
+    /**
+     * 服务组
+     */
     public enum ServerGroup{
+        /**
+         * 全部
+         */
         ALL,
+        /**
+         * 活跃
+         */
         STATUS_UP,
+        /**
+         * 下线
+         */
         STATUS_NOT_UP        
     }
         
     /**
      * delegate to {@link #chooseServer(Object)} with parameter null.
+     *
+     * 选择一个服务，由子类实现
      */
     public Server chooseServer() {
     	return chooseServer(null);
@@ -53,11 +68,15 @@ public abstract class AbstractLoadBalancer implements ILoadBalancer {
      * List of servers that this Loadbalancer knows about
      * 
      * @param serverGroup Servers grouped by status, e.g., {@link ServerGroup#STATUS_UP}
+     *
+     * 获取指定分组的服务列表，由子类实现
      */
     public abstract List<Server> getServerList(ServerGroup serverGroup);
     
     /**
      * Obtain LoadBalancer related Statistics
+     *
+     * 负载均衡器状态
      */
     public abstract LoadBalancerStats getLoadBalancerStats();    
 }

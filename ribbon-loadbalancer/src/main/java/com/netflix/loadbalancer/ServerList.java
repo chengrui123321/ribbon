@@ -24,15 +24,22 @@ import java.util.List;
  * @author stonse
  *
  * @param <T>
+ *
+ * 服务列表接口
  */
 public interface ServerList<T extends Server> {
 
+    /**
+     * 获取初始化的服务列表
+     * @return
+     */
     public List<T> getInitialListOfServers();
     
     /**
      * Return updated list of servers. This is called say every 30 secs
      * (configurable) by the Loadbalancer's Ping cycle
-     * 
+     *
+     * 获取更新的服务列表，每隔 30 s 更新一次(可配置)
      */
     public List<T> getUpdatedListOfServers();   
 

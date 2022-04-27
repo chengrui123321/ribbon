@@ -52,46 +52,139 @@ import java.util.concurrent.TimeUnit;
  * determines the loadbalacing strategy
  * 
  * @author stonse
- * 
+ *
+ * 用于存储负载均衡器运行时的状态及统计信息
+ *
+ * 信息如下：
+ * DynamicServerListLoadBalancer for client goods-service initialized:
+ * DynamicServerListLoadBalancer:{NFLoadBalancer:name=goods-service,current list of
+ * Servers=[localhost:9091, localhost:9081],Load balancer stats=Zone stats: {unknown=
+ * [Zone:unknown; Instance count:2; Active connections count: 0; Circuit breaker
+ * tripped count: 0; Active connections per server: 0.0;]
+ * },Server stats: [[Server:localhost:9091; Zone:UNKNOWN; Total Requests:0;
+ * Successive connection failure:0; Total blackout seconds:0; Last connection
+ * made:Thu Jan 01 08:00:00 CST 1970; First connection made: Thu Jan 01 08:00:00 CST
+ * 1970; Active Connections:0; total failure count in last (1000) msecs:0; average
+ * resp time:0.0; 90 percentile resp time:0.0; 95 percentile resp time:0.0; min
+ * resp time:0.0; max resp time:0.0; stddev resp time:0.0]
+ * , [Server:localhost:9081; Zone:UNKNOWN; Total Requests:0; Successive connection
+ * failure:0; Total blackout seconds:0; Last connection made:Thu Jan 01 08:00:00 CST
+ * 1970; First connection made: Thu Jan 01 08:00:00 CST 1970; Active Connections:0;
+ * total failure count in last (1000) msecs:0; average resp time:0.0; 90 percentile resp
+ * time:0.0; 95 percentile resp time:0.0; min resp time:0.0; max resp time:0.0;
+ * stddev resp time:0.0]
+ * ]}ServerList:com.netflix.loadbalancer.ConfigurationBasedServerList@74ddb59a
  */
 public class LoadBalancerStats implements IClientConfigAware {
-    
+
+    /**
+     * 前缀
+     */
     private static final String PREFIX = "LBStats_";
 
+    /**
+     * 统计活跃连接数量的时间窗口，默认 600s
+     */
     public static final IClientConfigKey<Integer> ACTIVE_REQUESTS_COUNT_TIMEOUT = new CommonClientConfigKey<Integer>(
             "niws.loadbalancer.serverStats.activeRequestsCount.effectiveWindowSeconds", 60 * 10) {};
 
+    /**
+     * 连接失败阈值。
+     * 默认 3， 超过就熔断
+     *
+     * 自定义
+     */
     public static final IClientConfigKey<Integer> CONNECTION_FAILURE_COUNT_THRESHOLD = new CommonClientConfigKey<Integer>(
             "niws.loadbalancer.%s.connectionFailureCountThreshold", 3) {};
 
+    /**
+     * 断路器超时因子
+     * 默认 10s
+     *
+     * 自定义
+     */
     public static final IClientConfigKey<Integer> CIRCUIT_TRIP_TIMEOUT_FACTOR_SECONDS = new CommonClientConfigKey<Integer>(
             "niws.loadbalancer.%s.circuitTripTimeoutFactorSeconds", 10) {};
 
+    /**
+     * 断路器最大超时秒数。
+     * 默认 30s = 10s(超时因子) * 3(连接失败阈值);
+     *
+     * 自定义
+     */
     public static final IClientConfigKey<Integer> CIRCUIT_TRIP_MAX_TIMEOUT_SECONDS = new CommonClientConfigKey<Integer>(
             "niws.loadbalancer.%s.circuitTripMaxTimeoutSeconds", 30) {};
 
+    /**
+     * 连接失败阈值。
+     * 默认 3， 超过就熔断
+     *
+     * 默认 default 配置
+     */
     public static final IClientConfigKey<Integer> DEFAULT_CONNECTION_FAILURE_COUNT_THRESHOLD = new CommonClientConfigKey<Integer>(
             "niws.loadbalancer.default.connectionFailureCountThreshold", 3) {};
 
+    /**
+     * 断路器超时因子
+     * 默认 10s
+     *
+     * 默认 default 配置
+     */
     public static final IClientConfigKey<Integer> DEFAULT_CIRCUIT_TRIP_TIMEOUT_FACTOR_SECONDS = new CommonClientConfigKey<Integer>(
             "niws.loadbalancer.default.circuitTripTimeoutFactorSeconds", 10) {};
 
+    /**
+     * 断路器最大超时秒数。
+     * 默认 30s = 10s(超时因子) * 3(连接失败阈值);
+     *
+     * 默认 default 配置
+     */
     public static final IClientConfigKey<Integer> DEFAULT_CIRCUIT_TRIP_MAX_TIMEOUT_SECONDS = new CommonClientConfigKey<Integer>(
             "niws.loadbalancer.default.circuitTripMaxTimeoutSeconds", 30) {};
 
+    /**
+     * 名称
+     */
     private String name;
-    
+
+    /**
+     * zone 状态缓存
+     * key: zone
+     * value: ZoneStats
+     */
     volatile Map<String, ZoneStats> zoneStatsMap = new ConcurrentHashMap<>();
+
+    /**
+     * 活跃服务列表
+     * key: zone
+     * value: 服务列表
+     */
     volatile Map<String, List<? extends Server>> upServerListZoneMap = new ConcurrentHashMap<>();
-    
+
+    /**
+     * 连接失败阈值
+     */
     private UnboxedIntProperty connectionFailureThreshold = new UnboxedIntProperty(CONNECTION_FAILURE_COUNT_THRESHOLD.defaultValue());
-        
+    /**
+     * 超时因子
+     */
     private UnboxedIntProperty circuitTrippedTimeoutFactor = new UnboxedIntProperty(CIRCUIT_TRIP_TIMEOUT_FACTOR_SECONDS.defaultValue());
-
+    /**
+     * 最大熔断时间
+     */
     private UnboxedIntProperty maxCircuitTrippedTimeout = new UnboxedIntProperty(CIRCUIT_TRIP_MAX_TIMEOUT_SECONDS.defaultValue());
-
+    /**
+     * 统计活跃连接数的时间窗口
+     */
     private UnboxedIntProperty activeRequestsCountTimeout = new UnboxedIntProperty(ACTIVE_REQUESTS_COUNT_TIMEOUT.defaultValue());
 
+    /**
+     * 服务状态信息缓存
+     * key: server
+     * value: ServerStats
+     *
+     * 缓存失效时间: 30分钟
+     */
     private final LoadingCache<Server, ServerStats> serverStatsCache = CacheBuilder.newBuilder()
             .expireAfterAccess(30, TimeUnit.MINUTES)
             .removalListener((RemovalListener<Server, ServerStats>) notification -> notification.getValue().close())
@@ -101,11 +194,20 @@ public class LoadBalancerStats implements IClientConfigAware {
                 }
             });
 
+    /**
+     * 创建服务状态信息
+     * @param server 服务
+     * @return ServerStats
+     */
     protected ServerStats createServerStats(Server server) {
+        // 创建 ServerStats
         ServerStats ss = new ServerStats(this);
         //configure custom settings
+        // 设置缓存数量
         ss.setBufferSize(1000);
-        ss.setPublishInterval(1000);                    
+        // 设置刷新时间间隔
+        ss.setPublishInterval(1000);
+        // 初始化 ServerStats
         ss.initialize(server);
         return ss;        
     }
@@ -199,12 +301,17 @@ public class LoadBalancerStats implements IClientConfigAware {
         ServerStats ss = getServerStats(server);  
         ss.noteResponseTime(msecs);
     }
-    
+
+    /**
+     * 获取服务状态信息
+     * @param server 服务
+     * @return 服务状态信息
+     */
     protected ServerStats getServerStats(Server server) {
+        // 服务为空，直接返回 null
         if (server == null) {
             return null;
         }
-
         try {
             return serverStatsCache.get(server);
         } catch (ExecutionException e) {
@@ -290,12 +397,21 @@ public class LoadBalancerStats implements IClientConfigAware {
         return getZoneSnapshot(zone).getLoadPerServer();
     }
 
+    /**
+     * 获取 zone 对应的快照
+     * @param zone zone
+     * @return ZoneSnapshot
+     */
     public ZoneSnapshot getZoneSnapshot(String zone) {
+        // 如果 zone 为空，直接创建新的快照
         if (zone == null) {
             return new ZoneSnapshot();
         }
+        // 小写
         zone = zone.toLowerCase();
+        // 获取 zone 对应的活跃服务列表
         List<? extends Server> currentList = upServerListZoneMap.get(zone);
+        // 获取 zone 对应的快照
         return getZoneSnapshot(currentList);        
     }
     
@@ -303,19 +419,26 @@ public class LoadBalancerStats implements IClientConfigAware {
      * This is the core function to get zone stats. All stats are reported to avoid
      * going over the list again for a different stat.
      * 
-     * @param servers
+     * @param servers 活跃服务列表
+     *
+     * 获取 zone 对应的快照
      */
     public ZoneSnapshot getZoneSnapshot(List<? extends Server> servers) {
+        // 如果活跃服务列表不存在，创建新的快照信息
         if (servers == null || servers.size() == 0) {
             return new ZoneSnapshot();
         }
+        // 服务数量
         int instanceCount = servers.size();
+        // 活跃连接数量: 进入 server + 1, 失败或者完成 - 1
         int activeConnectionsCount = 0;
         int activeConnectionsCountOnAvailableServer = 0;
         int circuitBreakerTrippedCount = 0;
         double loadPerServer = 0;
         long currentTime = System.currentTimeMillis();
+        // 遍历服务列表
         for (Server server: servers) {
+            // 获取单个服务状态信息
             ServerStats stat = getSingleServerStat(server);   
             if (stat.isCircuitBreakerTripped(currentTime)) {
                 circuitBreakerTrippedCount++;
@@ -332,6 +455,7 @@ public class LoadBalancerStats implements IClientConfigAware {
         } else {
             loadPerServer = ((double) activeConnectionsCountOnAvailableServer) / (instanceCount - circuitBreakerTrippedCount);
         }
+        // 创建 ZoneSnapshot
         return new ZoneSnapshot(instanceCount, circuitBreakerTrippedCount, activeConnectionsCount, loadPerServer);
     }
     
@@ -386,13 +510,23 @@ public class LoadBalancerStats implements IClientConfigAware {
         }
         return (int) ((activeConnectionsCount + circuitBreakerTrippedCount) * 100L / serverCount); 
     }
-    
+
+    /**
+     * 获取存活的 zone，基于 {@link #upServerListZoneMap.keySet}
+     * @return
+     */
     @Monitor(name=PREFIX + "AvailableZones", type = DataSourceType.INFORMATIONAL)   
     public Set<String> getAvailableZones() {
         return upServerListZoneMap.keySet();
     }
-    
+
+    /**
+     * 获取单个服务状态信息
+     * @param server 服务
+     * @return 服务状态信息
+     */
     public ServerStats getSingleServerStat(Server server) {
+        // 获取服务状态信息
         return getServerStats(server);
     }
 

@@ -24,14 +24,70 @@ import com.netflix.util.Pair;
  * Host:port identifier
  * 
  * @author stonse
+ *
+ * 服务信息，通常为 Host:Port
  * 
  */
 public class Server {
 
     /**
+     * 未知的 zone
+     */
+    public static final String UNKNOWN_ZONE = "UNKNOWN";
+    /**
+     * host
+     */
+    private String host;
+    /**
+     * port, 默认 80
+     */
+    private int port = 80;
+    /**
+     * 协议名
+     */
+    private String scheme;
+    /**
+     * 服务 id
+     */
+    private volatile String id;
+    /**
+     * 服务是否存活标识
+     */
+    private volatile boolean isAliveFlag;
+    private String zone = UNKNOWN_ZONE;
+    private volatile boolean readyToServe = true;
+
+    /**
+     * 额外信息
+     */
+    private MetaInfo simpleMetaInfo = new MetaInfo() {
+        @Override
+        public String getAppName() {
+            return null;
+        }
+
+        @Override
+        public String getServerGroup() {
+            return null;
+        }
+
+        @Override
+        public String getServiceIdForDiscovery() {
+            return null;
+        }
+
+        @Override
+        public String getInstanceId() {
+            return id;
+        }
+    };
+
+    /**
      * Additional meta information of a server, which contains
      * information of the targeting application, as well as server identification
      * specific for a deployment environment, for example, AWS.
+     *
+     * 存储服务的额外信息，如部署环境
      */
     public static interface MetaInfo {
         /**
@@ -56,37 +112,6 @@ public class Server {
          */
         public String getInstanceId();
     }
-
-    public static final String UNKNOWN_ZONE = "UNKNOWN";
-    private String host;
-    private int port = 80;
-    private String scheme;
-    private volatile String id;
-    private volatile boolean isAliveFlag;
-    private String zone = UNKNOWN_ZONE;
-    private volatile boolean readyToServe = true;
-
-    private MetaInfo simpleMetaInfo = new MetaInfo() {
-        @Override
-        public String getAppName() {
-            return null;
-        }
-
-        @Override
-        public String getServerGroup() {
-            return null;
-        }
-
-        @Override
-        public String getServiceIdForDiscovery() {
-            return null;
-        }
-
-        @Override
-        public String getInstanceId() {
-            return id;
-        }
-    };
 
     public Server(String host, int port) {
         this(null, host, port);
@@ -144,6 +169,11 @@ public class Server {
         return null;
     }
 
+    /**
+     * 返回 host 和 port 对数据，{@link Pair}
+     * @param id
+     * @return
+     */
     static Pair<String, Integer> getHostPort(String id) {
         if (id != null) {
             String host = null;

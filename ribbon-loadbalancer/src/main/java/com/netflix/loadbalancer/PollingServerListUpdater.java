@@ -18,12 +18,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * (refactored and moved here from {@link com.netflix.loadbalancer.DynamicServerListLoadBalancer})
  *
  * @author David Liu
+ *
+ * 默认方式加载动态服务列表，基于定时调度方式
  */
 public class PollingServerListUpdater implements ServerListUpdater {
 
     private static final Logger logger = LoggerFactory.getLogger(PollingServerListUpdater.class);
 
+    /**
+     * 定时延时时间，默认 1 s
+     */
     private static long LISTOFSERVERS_CACHE_UPDATE_DELAY = 1000; // msecs;
+    /**
+     * 定时时间间隔，默认 30 s
+     */
     private static int LISTOFSERVERS_CACHE_REPEAT_INTERVAL = 30 * 1000; // msecs;
     private static int POOL_SIZE = 2;
 
@@ -42,11 +50,26 @@ public class PollingServerListUpdater implements ServerListUpdater {
         return LazyHolder._serverListRefreshExecutor;
     }
 
+    /**
+     * 是否正在更新，默认 false，并发处理
+     */
     private final AtomicBoolean isActive = new AtomicBoolean(false);
+    /**
+     * 最后更新时间戳
+     */
     private volatile long lastUpdated = System.currentTimeMillis();
+    /**
+     * 初始化延迟时间
+     */
     private final long initialDelayMs;
+    /**
+     * 刷新时间间隔
+     */
     private final long refreshIntervalMs;
 
+    /**
+     * 定时调度
+     */
     private volatile ScheduledFuture<?> scheduledFuture;
 
     public PollingServerListUpdater() {
@@ -62,8 +85,14 @@ public class PollingServerListUpdater implements ServerListUpdater {
         this.refreshIntervalMs = refreshIntervalMs;
     }
 
+    /**
+     * 开启动态服务更新
+     * @param updateAction
+     *
+     */
     @Override
     public synchronized void start(final UpdateAction updateAction) {
+        // 如果此时没有线程更新，则执行更新操作
         if (isActive.compareAndSet(false, true)) {
             final Runnable wrapperRunnable = () ->  {
                 if (!isActive.get()) {
@@ -73,13 +102,15 @@ public class PollingServerListUpdater implements ServerListUpdater {
                     return;
                 }
                 try {
+                    // 执行具体任务
                     updateAction.doUpdate();
+                    // 记录执行时间
                     lastUpdated = System.currentTimeMillis();
                 } catch (Exception e) {
                     logger.warn("Failed one update cycle", e);
                 }
             };
-
+            // 创建延时调度器，延迟 1 s 执行，每隔 30 s 执行一次
             scheduledFuture = getRefreshExecutor().scheduleWithFixedDelay(
                     wrapperRunnable,
                     initialDelayMs,

@@ -33,6 +33,8 @@ import com.netflix.client.config.IClientConfig;
 }</pre>
  * 
  * @author awang
+ *
+ * 从配置文件中获取配置的静态服务列表
  * 
  */
 public class ConfigurationBasedServerList extends AbstractServerList<Server>  {
@@ -44,6 +46,10 @@ public class ConfigurationBasedServerList extends AbstractServerList<Server>  {
 	    return getUpdatedListOfServers();
 	}
 
+	/**
+	 * 获取更新的服务列表
+	 * @return 服务列表
+	 */
 	@Override
 	public List<Server> getUpdatedListOfServers() {
         String listOfServers = clientConfig.get(CommonClientConfigKey.ListOfServers);

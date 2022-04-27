@@ -6,6 +6,8 @@ import java.util.function.Consumer;
 /**
  * Ribbon specific encapsulation of a dynamic configuration property
  * @param <T>
+ *
+ * Ribbon 动态属性配置
  */
 public interface Property<T> {
     /**

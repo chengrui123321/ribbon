@@ -21,11 +21,25 @@ package com.netflix.loadbalancer;
  * Captures the metrics on a Per Zone basis (Zone is modeled after the Amazon Availability Zone)
  * @author awang
  *
+ * 区域快照信息
  */
 public class ZoneSnapshot {
+    /**
+     * 实例数量
+     */
     final int instanceCount;
+
+    /**
+     * 平均负载比例
+     */
     final double loadPerServer;
+    /**
+     * 熔断服务数量
+     */
     final int circuitTrippedCount;
+    /**
+     * 活跃连接数量
+     */
     final int activeRequestsCount;
     
     public ZoneSnapshot() {

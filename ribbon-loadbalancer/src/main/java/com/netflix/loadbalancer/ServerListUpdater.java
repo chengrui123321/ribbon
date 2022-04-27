@@ -5,13 +5,19 @@ package com.netflix.loadbalancer;
  * of doing dynamic server list updates.
  *
  * @author David Liu
+ *
+ * 动态服务更新器
  */
 public interface ServerListUpdater {
 
     /**
      * an interface for the updateAction that actually executes a server list update
+     * 实际执行动态更新服务功能的接口
      */
     public interface UpdateAction {
+        /**
+         * 更新
+         */
         void doUpdate();
     }
 
@@ -21,6 +27,8 @@ public interface ServerListUpdater {
      * This call should be idempotent.
      *
      * @param updateAction
+     *
+     * 开启
      */
     void start(UpdateAction updateAction);
 

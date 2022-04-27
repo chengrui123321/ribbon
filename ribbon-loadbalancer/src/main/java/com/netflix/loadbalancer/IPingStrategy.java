@@ -10,8 +10,16 @@ package com.netflix.loadbalancer;
  * @author Dmitry_Cherkas
  * @see Server
  * @see IPing
+ *
+ * Ping 服务策略，可以实现此接口来自定义策略(并发)
  */
 public interface IPingStrategy {
 
+    /**
+     * ping 服务列表
+     * @param ping
+     * @param servers
+     * @return
+     */
     boolean[] pingServers(IPing ping, Server[] servers);
 }

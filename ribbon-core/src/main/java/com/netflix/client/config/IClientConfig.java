@@ -26,6 +26,8 @@ import java.util.function.BiConsumer;
  * and for method execution.
  * 
  * @author awang
+ *
+ * 定义各种 API 用于初始化客户端或负载平衡器和方法执行的客户端配置接口
  */
 
 public interface IClientConfig {

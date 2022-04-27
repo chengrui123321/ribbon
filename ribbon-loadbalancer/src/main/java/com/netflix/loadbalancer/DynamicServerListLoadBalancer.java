@@ -40,6 +40,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * meet the desired criteria.
  * 
  * @author stonse
+ *
+ * 动态读物列表负载均衡器
+ * 1.开启动态更新服务列表功能
+ * 2.更新服务列表
  * 
  */
 public class DynamicServerListLoadBalancer<T extends Server> extends BaseLoadBalancer {
@@ -51,17 +55,30 @@ public class DynamicServerListLoadBalancer<T extends Server> extends BaseLoadBal
     // to keep track of modification of server lists
     protected AtomicBoolean serverListUpdateInProgress = new AtomicBoolean(false);
 
+    /**
+     * 服务列表
+     */
     volatile ServerList<T> serverListImpl;
 
+    /**
+     * 服务列表多滤器
+     */
     volatile ServerListFilter<T> filter;
 
+    /**
+     * 服务列表更新器
+     */
     protected final ServerListUpdater.UpdateAction updateAction = new ServerListUpdater.UpdateAction() {
         @Override
         public void doUpdate() {
+            // 定时执行更新服务列表
             updateListOfServers();
         }
     };
 
+    /**
+     * server 列表更新器
+     */
     protected volatile ServerListUpdater serverListUpdater;
 
     public DynamicServerListLoadBalancer() {
@@ -81,6 +98,9 @@ public class DynamicServerListLoadBalancer<T extends Server> extends BaseLoadBal
         );
     }
 
+    /**
+     * 创建 DynamicServerListLoadBalancer
+     */
     public DynamicServerListLoadBalancer(IClientConfig clientConfig, IRule rule, IPing ping,
                                          ServerList<T> serverList, ServerListFilter<T> filter,
                                          ServerListUpdater serverListUpdater) {
@@ -91,6 +111,7 @@ public class DynamicServerListLoadBalancer<T extends Server> extends BaseLoadBal
         if (filter instanceof AbstractServerListFilter) {
             ((AbstractServerListFilter) filter).setLoadBalancerStats(getLoadBalancerStats());
         }
+        // 开启动态服务功能
         restOfInit(clientConfig);
     }
 
@@ -134,12 +155,17 @@ public class DynamicServerListLoadBalancer<T extends Server> extends BaseLoadBal
         }
     }
 
+    /**
+     * 开启动态服务功能
+     * @param clientConfig
+     */
     void restOfInit(IClientConfig clientConfig) {
         boolean primeConnection = this.isEnablePrimingConnections();
         // turn this off to avoid duplicated asynchronous priming done in BaseLoadBalancer.setServerList()
         this.setEnablePrimingConnections(false);
+        // 开启动态更新 server
         enableAndInitLearnNewServersFeature();
-
+        // 更新 server 列表
         updateListOfServers();
         if (primeConnection && this.getPrimeConnections() != null) {
             this.getPrimeConnections()
@@ -216,9 +242,12 @@ public class DynamicServerListLoadBalancer<T extends Server> extends BaseLoadBal
      * Feature that lets us add new instances (from AMIs) to the list of
      * existing servers that the LB will use Call this method if you want this
      * feature enabled
+     *
+     * 开启动态更新 server
      */
     public void enableAndInitLearnNewServersFeature() {
         LOGGER.info("Using serverListUpdater {}", serverListUpdater.getClass().getSimpleName());
+        // 开启动态服务更新功能
         serverListUpdater.start(updateAction);
     }
 
@@ -232,20 +261,25 @@ public class DynamicServerListLoadBalancer<T extends Server> extends BaseLoadBal
         }
     }
 
+    /**
+     * 更新服务列表
+     */
     @VisibleForTesting
     public void updateListOfServers() {
         List<T> servers = new ArrayList<T>();
+        // 如果服务列表不为空，则更新
         if (serverListImpl != null) {
             servers = serverListImpl.getUpdatedListOfServers();
             LOGGER.debug("List of Servers for {} obtained from Discovery client: {}",
                     getIdentifier(), servers);
-
+            // 如果服务列表过滤器不为空，过滤服务
             if (filter != null) {
                 servers = filter.getFilteredListOfServers(servers);
                 LOGGER.debug("Filtered List of Servers for {} obtained from Discovery client: {}",
                         getIdentifier(), servers);
             }
         }
+        // 如果服务列表为空，则全量获取服务列表
         updateAllServerList(servers);
     }
 
@@ -253,9 +287,12 @@ public class DynamicServerListLoadBalancer<T extends Server> extends BaseLoadBal
      * Update the AllServer list in the LoadBalancer if necessary and enabled
      * 
      * @param ls
+     *
+     * 加载所有服务
      */
     protected void updateAllServerList(List<T> ls) {
         // other threads might be doing this - in which case, we pass
+        // 基于 cas 判断是否有正在加载服务的线程，如果没有才执行
         if (serverListUpdateInProgress.compareAndSet(false, true)) {
             try {
                 for (T s : ls) {
@@ -264,6 +301,7 @@ public class DynamicServerListLoadBalancer<T extends Server> extends BaseLoadBal
                                       // of having to wait out the ping cycle.
                 }
                 setServersList(ls);
+                // 进行心跳检测
                 super.forceQuickPing();
             } finally {
                 serverListUpdateInProgress.set(false);

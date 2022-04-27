@@ -26,9 +26,16 @@ import java.util.List;
  * @author stonse
  * 
  * @param <T>
+ *
+ * 服务列表过滤器，用于过滤配置的或动态加载的服务列表
  */
 public interface ServerListFilter<T extends Server> {
 
+    /**
+     * 过滤服务列表
+     * @param servers 服务列表
+     * @return 过滤后的服务列表
+     */
     public List<T> getFilteredListOfServers(List<T> servers);
 
 }

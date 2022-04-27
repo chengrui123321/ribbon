@@ -17,7 +17,6 @@
  */
 package com.netflix.loadbalancer;
 
-import com.google.common.base.Preconditions;
 import com.netflix.client.config.CommonClientConfigKey;
 import com.netflix.client.config.IClientConfig;
 import com.netflix.client.config.IClientConfigKey;
@@ -31,20 +30,40 @@ import javax.annotation.Nullable;
  * 
  * @author awang
  *
+ * 过滤熔断状态的服务及并发过高的服务
  */
 public class AvailabilityPredicate extends  AbstractServerPredicate {
 
+    /**
+     * 是否需要过滤，默认 true
+     */
     private static final IClientConfigKey<Boolean> FILTER_CIRCUIT_TRIPPED = new CommonClientConfigKey<Boolean>(
             "niws.loadbalancer.availabilityFilteringRule.filterCircuitTripped", true) {};
 
+    /**
+     * 默认服务连接数限制，默认 -1
+     */
     private static final IClientConfigKey<Integer> DEFAULT_ACTIVE_CONNECTIONS_LIMIT = new CommonClientConfigKey<Integer>(
             "niws.loadbalancer.availabilityFilteringRule.activeConnectionsLimit", -1) {};
 
+    /**
+     * 存活连接数量限制，默认 -1
+     */
     private static final IClientConfigKey<Integer> ACTIVE_CONNECTIONS_LIMIT = new CommonClientConfigKey<Integer>(
             "ActiveConnectionsLimit", -1) {};
 
+    /**
+     * 是否需要过滤
+     */
     private Property<Boolean> circuitBreakerFiltering = Property.of(FILTER_CIRCUIT_TRIPPED.defaultValue());
+
+    /**
+     * 默认服务连接数限制
+     */
     private Property<Integer> defaultActiveConnectionsLimit = Property.of(DEFAULT_ACTIVE_CONNECTIONS_LIMIT.defaultValue());
+    /**
+     * 存活连接数量限制
+     */
     private Property<Integer> activeConnectionsLimit = Property.of(ACTIVE_CONNECTIONS_LIMIT.defaultValue());
 
     public AvailabilityPredicate(IRule rule, IClientConfig clientConfig) {
@@ -80,18 +99,31 @@ public class AvailabilityPredicate extends  AbstractServerPredicate {
         return limit;
     }
 
+    /**
+     * 过滤熔断状态下的服务及并发连接过多的服务
+     * @param input server
+     * @return
+     */
     @Override
     public boolean apply(@Nullable PredicateKey input) {
+        // 获取负载均衡器状态
         LoadBalancerStats stats = getLBStats();
         if (stats == null) {
             return true;
         }
+        // 是否需要跳过该服务
         return !shouldSkipServer(stats.getSingleServerStat(input.getServer()));
     }
-    
+
+    /**
+     * 是否需要跳过该服务，跳过则直接应用成功
+     * @param stats 服务状态
+     * @return
+     */
     private boolean shouldSkipServer(ServerStats stats) {
-        if ((circuitBreakerFiltering.getOrDefault() && stats.isCircuitBreakerTripped())
-                || stats.getActiveRequestsCount() >= getActiveConnectionsLimit()) {
+        if ((circuitBreakerFiltering.getOrDefault() //niws.loadbalancer.availabilityFilteringRule.filterCircuitTripped 是否为 true
+                && stats.isCircuitBreakerTripped()) //该 Server 是否为断路状态
+                || stats.getActiveRequestsCount() >= getActiveConnectionsLimit()) { //本机发往这个 Server 未处理完的请求个数是否大于 Server 实例最大的活跃连接数
             return true;
         }
         return false;

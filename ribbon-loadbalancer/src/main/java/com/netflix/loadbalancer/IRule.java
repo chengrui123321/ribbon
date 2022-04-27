@@ -23,17 +23,21 @@ package com.netflix.loadbalancer;
  * Round Robin, Response Time based etc.
  * 
  * @author stonse
+ *
+ * 负载均衡策略接口
  * 
  */
 public interface IRule{
-    /*
+
+    /**
      * choose one alive server from lb.allServers or
      * lb.upServers according to key
      * 
      * @return choosen Server object. NULL is returned if none
-     *  server is available 
+     *  server is available
+     *
+     *  选择一个可用的服务
      */
-
     public Server choose(Object key);
     
     public void setLoadBalancer(ILoadBalancer lb);

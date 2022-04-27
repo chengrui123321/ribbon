@@ -24,10 +24,15 @@ import com.netflix.client.config.IClientConfig;
  * loadbalancer package
  * 
  * @author stonse
+ *
+ * 继承抽象类的客户端轮询策略
  * 
  */
 public class ClientConfigEnabledRoundRobinRule extends AbstractLoadBalancerRule {
 
+    /**
+     * 轮询策略
+     */
     RoundRobinRule roundRobinRule = new RoundRobinRule();
 
     @Override
@@ -40,7 +45,12 @@ public class ClientConfigEnabledRoundRobinRule extends AbstractLoadBalancerRule 
     	super.setLoadBalancer(lb);
     	roundRobinRule.setLoadBalancer(lb);
     }
-    
+
+    /**
+     * 选择服务，使用 {@link RoundRobinRule#choose(Object)}
+     * @param key
+     * @return
+     */
     @Override
     public Server choose(Object key) {
         if (roundRobinRule != null) {

@@ -38,6 +38,7 @@ import com.netflix.client.config.IClientConfig;
  * 
  * @author awang
  *
+ * 基础断言，用于过滤服务
  */
 public abstract class AbstractServerPredicate implements Predicate<PredicateKey> {
     
@@ -127,7 +128,9 @@ public abstract class AbstractServerPredicate implements Predicate<PredicateKey>
     }
  
     /**
-     * Get servers filtered by this predicate from list of servers. 
+     * Get servers filtered by this predicate from list of servers.
+     *
+     * 按照断言器进行过滤，返回服务列表
      */
     public List<Server> getEligibleServers(List<Server> servers, Object loadBalancerKey) {
         if (loadBalancerKey == null) {
@@ -135,6 +138,7 @@ public abstract class AbstractServerPredicate implements Predicate<PredicateKey>
         } else {
             List<Server> results = Lists.newArrayList();
             for (Server server: servers) {
+                // 遍历所有服务，将每个服务封装成 PredicateKey,进行过滤验证，验证成功加入服务列表
                 if (this.apply(new PredicateKey(loadBalancerKey, server))) {
                     results.add(server);
                 }
@@ -198,9 +202,11 @@ public abstract class AbstractServerPredicate implements Predicate<PredicateKey>
     }
     
     /**
-     * Choose a server in a round robin fashion after the predicate filters a given list of servers and load balancer key. 
+     * Choose a server in a round robin fashion after the predicate filters a given list of servers and load balancer key.
+     * 根据断言器和负载均衡 key 筛选出符合的服务列表，并按照轮询规则获取一个服务
      */
     public Optional<Server> chooseRoundRobinAfterFiltering(List<Server> servers, Object loadBalancerKey) {
+        // 获取服务列表
         List<Server> eligible = getEligibleServers(servers, loadBalancerKey);
         if (eligible.size() == 0) {
             return Optional.absent();
@@ -210,9 +216,16 @@ public abstract class AbstractServerPredicate implements Predicate<PredicateKey>
         
     /**
      * Create an instance from a predicate.
+     *
+     * 创建 AbstractServerPredicate 实例，由 {@link AbstractServerPredicate#apply(Object)} 调用
      */
     public static AbstractServerPredicate ofKeyPredicate(final Predicate<PredicateKey> p) {
         return new AbstractServerPredicate() {
+            /**
+             * 应用断言
+             * @param input server 节点
+             * @return
+             */
             @Override
             @edu.umd.cs.findbugs.annotations.SuppressWarnings(value = "NP")
             public boolean apply(PredicateKey input) {
